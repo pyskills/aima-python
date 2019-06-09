@@ -18,6 +18,16 @@ def test_euclidean():
     distance = euclidean_distance([0, 0, 0], [0, 0, 0])
     assert distance == 0
 
+def test_cross_entropy():
+    loss = cross_entropy_loss([1,0], [0.9, 0.3])
+    assert round(loss,2) == 0.23
+
+    loss = cross_entropy_loss([1,0,0,1], [0.9,0.3,0.5,0.75])
+    assert round(loss,2) == 0.36
+
+    loss = cross_entropy_loss([1,0,0,1,1,0,1,1], [0.9,0.3,0.5,0.75,0.85,0.14,0.93,0.79])
+    assert round(loss,2) == 0.26
+
 
 def test_rms_error():
     assert rms_error([2, 2], [2, 2]) == 0
@@ -133,28 +143,28 @@ def test_truncated_svd():
     test_mat = [[17, 0],
                 [0, 11]]
     _, _, eival = truncated_svd(test_mat)
-    assert isclose(abs(eival[0]), 17)
-    assert isclose(abs(eival[1]), 11)
+    assert isclose(eival[0], 17)
+    assert isclose(eival[1], 11)
 
     test_mat = [[17, 0],
                 [0, -34]]
     _, _, eival = truncated_svd(test_mat)
-    assert isclose(abs(eival[0]), 34)
-    assert isclose(abs(eival[1]), 17)
+    assert isclose(eival[0], 34)
+    assert isclose(eival[1], 17)
 
     test_mat = [[1, 0, 0, 0, 2],
                 [0, 0, 3, 0, 0],
                 [0, 0, 0, 0, 0],
                 [0, 2, 0, 0, 0]]
     _, _, eival = truncated_svd(test_mat)
-    assert isclose(abs(eival[0]), 3)
-    assert isclose(abs(eival[1]), 5**0.5)
+    assert isclose(eival[0], 3)
+    assert isclose(eival[1], 5**0.5)
 
     test_mat = [[3, 2, 2],
                 [2, 3, -2]]
     _, _, eival = truncated_svd(test_mat)
-    assert isclose(abs(eival[0]), 5)
-    assert isclose(abs(eival[1]), 3)
+    assert isclose(eival[0], 5)
+    assert isclose(eival[1], 3)
 
 
 def test_decision_tree_learner():
@@ -163,6 +173,15 @@ def test_decision_tree_learner():
     assert dTL([5, 3, 1, 0.1]) == "setosa"
     assert dTL([6, 5, 3, 1.5]) == "versicolor"
     assert dTL([7.5, 4, 6, 2]) == "virginica"
+
+
+def test_information_content():
+    assert information_content([]) == 0
+    assert information_content([4]) == 0
+    assert information_content([5, 4, 0, 2, 5, 0]) > 1.9
+    assert information_content([5, 4, 0, 2, 5, 0]) < 2
+    assert information_content([1.5, 2.5]) > 0.9
+    assert information_content([1.5, 2.5]) < 1.0
 
 
 def test_random_forest():
@@ -192,7 +211,7 @@ def test_neural_network_learner():
              ([7.3, 4.0, 6.1, 2.4], 2),
              ([7.0, 3.3, 6.1, 2.5], 2)]
     assert grade_learner(nNL, tests) >= 1/3
-    assert err_ratio(nNL, iris) < 0.2
+    assert err_ratio(nNL, iris) < 0.21
 
 
 def test_perceptron():
@@ -218,3 +237,19 @@ def test_random_weights():
     assert len(test_weights) == num_weights
     for weight in test_weights:
         assert weight >= min_value and weight <= max_value
+
+
+def test_adaboost():
+    iris = DataSet(name="iris")
+    iris.classes_to_numbers()
+    WeightedPerceptron = WeightedLearner(PerceptronLearner)
+    AdaboostLearner = AdaBoost(WeightedPerceptron, 5)
+    adaboost = AdaboostLearner(iris)
+    tests = [([5, 3, 1, 0.1], 0),
+             ([5, 3.5, 1, 0], 0),
+             ([6, 3, 4, 1.1], 1),
+             ([6, 2, 3.5, 1], 1),
+             ([7.5, 4, 6, 2], 2),
+             ([7, 3, 6, 2.5], 2)]
+    assert grade_learner(adaboost, tests) > 4/6
+    assert err_ratio(adaboost, iris) < 0.25

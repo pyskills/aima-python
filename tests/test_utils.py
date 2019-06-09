@@ -2,21 +2,32 @@ import pytest
 from utils import *
 import random
 
+def test_sequence():
+    assert sequence(1) == (1,)
+    assert sequence("helloworld") == "helloworld"
+    assert sequence({"hello":4, "world":5}) == ({"hello":4, "world":5},)
+    assert sequence([1, 2, 3]) == [1, 2, 3]
+    assert sequence((4, 5, 6)) == (4, 5, 6)
+    assert sequence([(1, 2),(2, 3),(4, 5)]) == [(1, 2), (2, 3),(4, 5)]
+    assert sequence(([1, 2],[3, 4],[5, 6])) == ([1, 2], [3, 4],[5, 6])
 
 def test_removeall_list():
     assert removeall(4, []) == []
     assert removeall(4, [1, 2, 3, 4]) == [1, 2, 3]
     assert removeall(4, [4, 1, 4, 2, 3, 4, 4]) == [1, 2, 3]
+    assert removeall(1, [2,3,4,5,6]) == [2,3,4,5,6]
 
 
 def test_removeall_string():
     assert removeall('s', '') == ''
     assert removeall('s', 'This is a test. Was a test.') == 'Thi i a tet. Wa a tet.'
+    assert removeall('a', 'artificial intelligence: a modern approach') == 'rtificil intelligence:  modern pproch'	
 
 
 def test_unique():
     assert unique([1, 2, 3, 2, 1]) == [1, 2, 3]
     assert unique([1, 5, 6, 7, 6, 5]) == [1, 5, 6, 7]
+    assert unique([1, 2, 3, 4, 5]) == [1, 2, 3, 4, 5]	
 
 
 def test_count():
@@ -24,7 +35,13 @@ def test_count():
     assert count("aldpeofmhngvia") == 14
     assert count([True, False, True, True, False]) == 3
     assert count([5 > 1, len("abc") == 3, 3+1 == 5]) == 2
+    assert count("aima") == 4 	
 
+def test_multimap():
+    assert multimap([(1, 2),(1, 3),(1, 4),(2, 3),(2, 4),(4, 5)]) == \
+        {1: [2, 3, 4], 2: [3, 4], 4: [5]}
+    assert multimap([("a", 2), ("a", 3), ("a", 4), ("b", 3), ("b", 4), ("c", 5)]) == \
+        {'a': [2, 3, 4], 'b': [3, 4], 'c': [5]}
 
 def test_product():
     assert product([1, 2, 3, 4]) == 24
@@ -35,9 +52,15 @@ def test_first():
     assert first('word') == 'w'
     assert first('') is None
     assert first('', 'empty') == 'empty'
+    assert first([1, 2, 3, 4, 5]) == 1
+    assert first([]) == None
     assert first(range(10)) == 0
     assert first(x for x in range(10) if x > 3) == 4
     assert first(x for x in range(10) if x > 100) is None
+    assert first((1, 2, 3)) == 1
+    assert first(range(2, 10)) == 2
+    assert first([(1, 2),(1, 3),(1, 4)]) == (1, 2)
+    assert first({1:"one", 2:"two", 3:"three"}) == 1
 
 
 def test_is_in():
@@ -49,6 +72,7 @@ def test_is_in():
 def test_mode():
     assert mode([12, 32, 2, 1, 2, 3, 2, 3, 2, 3, 44, 3, 12, 4, 9, 0, 3, 45, 3]) == 3
     assert mode("absndkwoajfkalwpdlsdlfllalsflfdslgflal") == 'l'
+    assert mode("artificialintelligence") == 'i'	
 
 
 def test_powerset():
@@ -57,6 +81,7 @@ def test_powerset():
 
 def test_argminmax():
     assert argmin([-2, 1], key=abs) == 1
+    assert argmin(['one', 'to', 'three'], key=len) == 'to'
     assert argmax([-2, 1], key=abs) == -2
     assert argmax(['one', 'to', 'three'], key=len) == 'three'
 
@@ -75,6 +100,7 @@ def test_histogram():
 
 def test_dotproduct():
     assert dotproduct([1, 2, 3], [1000, 100, 10]) == 1230
+    assert dotproduct([1, 2, 3], [0, 0, 0]) == 0
 
 
 def test_element_wise_product():
@@ -107,11 +133,12 @@ def test_vector_to_diagonal():
 
 def test_vector_add():
     assert vector_add((0, 1), (8, 9)) == (8, 10)
+    assert vector_add((1, 1, 1), (2, 2, 2)) == (3, 3, 3)
 
 
 def test_scalar_vector_product():
     assert scalar_vector_product(2, [1, 2, 3]) == [2, 4, 6]
-
+    assert scalar_vector_product(0, [9, 9, 9]) == [0, 0, 0]
 
 def test_scalar_matrix_product():
     assert rounder(scalar_matrix_product(-5, [[1, 2], [3, 4], [0, 6]])) == [[-5, -10], [-15, -20],
@@ -255,53 +282,43 @@ def test_expr():
     assert (expr('GP(x, z) <== P(x, y) & P(y, z)')
             == Expr('<==', GP(x, z), P(x, y) & P(y, z)))
 
-def test_FIFOQueue() :
-    # Create an object
-    queue = FIFOQueue()
-    # Generate an array of number to be used for testing
-    test_data = [ random.choice(range(100)) for i in range(100) ]
-    # Index of the element to be added in the queue
-    front_head = 0
-    # Index of the element to be removed from the queue
-    back_head = 0
-    while front_head < 100 or back_head < 100 :
-        if front_head == 100 : # only possible to remove
-            # check for pop and append method
-            assert queue.pop() == test_data[back_head]
-            back_head += 1
-        elif back_head == front_head : # only possible to push element into queue
-            queue.append(test_data[front_head])
-            front_head += 1
-        # else do it in a random manner
-        elif random.random() < 0.5 :
-            assert queue.pop() == test_data[back_head]
-            back_head += 1
-        else :
-            queue.append(test_data[front_head])
-            front_head += 1
-        # check for __len__ method
-        assert len(queue) == front_head - back_head
-        # chek for __contains__ method
-        if front_head - back_head > 0 :
-            assert random.choice(test_data[back_head:front_head]) in queue
+def test_min_priorityqueue():
+    queue = PriorityQueue(f=lambda x: x[1])
+    queue.append((1,100))
+    queue.append((2,30))
+    queue.append((3,50))
+    assert queue.pop() == (2,30)
+    assert len(queue) == 2
+    assert queue[(3,50)] == 50
+    assert (1,100) in queue
+    del queue[(1,100)]
+    assert (1,100) not in queue
+    queue.extend([(1,100), (4,10)])
+    assert queue.pop() == (4,10)
+    assert len(queue) == 2
 
-    # check extend method
-    test_data1 = [ random.choice(range(100)) for i in range(50) ]
-    test_data2 = [ random.choice(range(100)) for i in range(50) ]
-    # append elements of test data 1
-    queue.extend(test_data1)
-    # append elements of test data 2
-    queue.extend(test_data2)
-    # reset front_head
-    front_head = 0
+def test_max_priorityqueue():
+    queue = PriorityQueue(order='max', f=lambda x: x[1])
+    queue.append((1,100))
+    queue.append((2,30))
+    queue.append((3,50))
+    assert queue.pop() == (1,100)
 
-    while front_head < 50 :
-        assert test_data1[front_head] == queue.pop()
-        front_head += 1
+def test_priorityqueue_with_objects():
+    class Test:
+        def __init__(self, a, b):
+            self.a = a
+            self.b = b
+        def __eq__(self, other):
+            return self.a==other.a
 
-    while front_head < 100 :
-        assert test_data2[front_head - 50] == queue.pop()
-        front_head += 1
+    queue = PriorityQueue(f=lambda x: x.b)
+    queue.append(Test(1,100))
+    other = Test(1,10)
+    assert queue[other]==100
+    assert other in queue
+    del queue[other]
+    assert len(queue)==0
 
 if __name__ == '__main__':
     pytest.main()

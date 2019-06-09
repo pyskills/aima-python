@@ -6,15 +6,17 @@ functions."""
 
 from utils import (
     is_in, argmin, argmax, argmax_random_tie, probability, weighted_sampler,
-    memoize, print_table, open_data, Stack, FIFOQueue, PriorityQueue, name,
-    distance
+    memoize, print_table, open_data, PriorityQueue, name,
+    distance, vector_add
 )
 
-from collections import defaultdict
+from collections import defaultdict, deque
 import math
 import random
 import sys
 import bisect
+from operator import itemgetter
+
 
 infinity = float('inf')
 
@@ -23,14 +25,14 @@ infinity = float('inf')
 
 class Problem(object):
 
-    """The abstract class for a formal problem.  You should subclass
+    """The abstract class for a formal problem. You should subclass
     this and implement the methods actions and result, and possibly
     __init__, goal_test, and path_cost. Then you will create instances
     of your subclass and solve them with the various search functions."""
 
     def __init__(self, initial, goal=None):
         """The constructor specifies the initial state, and possibly a goal
-        state, if there is a unique goal.  Your subclass's constructor can add
+        state, if there is a unique goal. Your subclass's constructor can add
         other arguments."""
         self.initial = initial
         self.goal = goal
@@ -107,11 +109,12 @@ class Node:
 
     def child_node(self, problem, action):
         """[Figure 3.10]"""
-        next = problem.result(self.state, action)
-        return Node(next, self, action,
+        next_state = problem.result(self.state, action)
+        next_node = Node(next_state, self, action,
                     problem.path_cost(self.path_cost, self.state,
-                                      action, next))
-
+                                      action, next_state))
+        return next_node
+    
     def solution(self):
         """Return the sequence of actions to go from the root to this node."""
         return [node.action for node in self.path()[1:]]
@@ -124,7 +127,7 @@ class Node:
             node = node.parent
         return list(reversed(path_back))
 
-    # We want for a queue of nodes in breadth_first_search or
+    # We want for a queue of nodes in breadth_first_graph_search or
     # astar_search to have no duplicated states, so we treat nodes
     # with the same state as equal. [Problem: this may not be what you
     # want in other contexts.]
@@ -143,7 +146,7 @@ class SimpleProblemSolvingAgentProgram:
     """Abstract framework for a problem-solving agent. [Figure 3.1]"""
 
     def __init__(self, initial_state=None):
-        """State is an sbstract representation of the state
+        """State is an abstract representation of the state
         of the world, and seq is the list of actions required
         to get to a particular state from the initial state(root)."""
         self.state = initial_state
@@ -161,7 +164,7 @@ class SimpleProblemSolvingAgentProgram:
                 return None
         return self.seq.pop(0)
 
-    def update_state(self, percept):
+    def update_state(self, state, percept):
         raise NotImplementedError
 
     def formulate_goal(self, state):
@@ -177,11 +180,30 @@ class SimpleProblemSolvingAgentProgram:
 # Uninformed Search algorithms
 
 
-def tree_search(problem, frontier):
-    """Search through the successors of a problem to find a goal.
-    The argument frontier should be an empty queue.
-    Don't worry about repeated paths to a state. [Figure 3.7]"""
-    frontier.append(Node(problem.initial))
+def breadth_first_tree_search(problem):
+    """Search the shallowest nodes in the search tree first.
+        Search through the successors of a problem to find a goal.
+        The argument frontier should be an empty queue.
+        Repeats infinitely in case of loops. [Figure 3.7]"""
+
+    frontier = deque([Node(problem.initial)])  # FIFO queue
+
+    while frontier:
+        node = frontier.popleft()
+        if problem.goal_test(node.state):
+            return node
+        frontier.extend(node.expand(problem))
+    return None
+
+
+def depth_first_tree_search(problem):
+    """Search the deepest nodes in the search tree first.
+        Search through the successors of a problem to find a goal.
+        The argument frontier should be an empty queue.
+        Repeats infinitely in case of loops. [Figure 3.7]"""
+
+    frontier = [Node(problem.initial)]  # Stack
+
     while frontier:
         node = frontier.pop()
         if problem.goal_test(node.state):
@@ -190,11 +212,13 @@ def tree_search(problem, frontier):
     return None
 
 
-def graph_search(problem, frontier):
-    """Search through the successors of a problem to find a goal.
-    The argument frontier should be an empty queue.
-    If two paths reach a state, only use the first one. [Figure 3.7]"""
-    frontier.append(Node(problem.initial))
+def depth_first_graph_search(problem):
+    """Search the deepest nodes in the search tree first.
+        Search through the successors of a problem to find a goal.
+        The argument frontier should be an empty queue.
+        Does not get trapped by loops.
+        If two paths reach a state, only use the first one. [Figure 3.7]"""
+    frontier = [(Node(problem.initial))]  # Stack
     explored = set()
     while frontier:
         node = frontier.pop()
@@ -207,31 +231,19 @@ def graph_search(problem, frontier):
     return None
 
 
-def breadth_first_tree_search(problem):
-    """Search the shallowest nodes in the search tree first."""
-    return tree_search(problem, FIFOQueue())
-
-
-def depth_first_tree_search(problem):
-    """Search the deepest nodes in the search tree first."""
-    return tree_search(problem, Stack())
-
-
-def depth_first_graph_search(problem):
-    """Search the deepest nodes in the search tree first."""
-    return graph_search(problem, Stack())
-
-
-def breadth_first_search(problem):
-    """[Figure 3.11]"""
+def breadth_first_graph_search(problem):
+    """[Figure 3.11]
+    Note that this function can be implemented in a
+    single line as below:
+    return graph_search(problem, FIFOQueue())
+    """
     node = Node(problem.initial)
     if problem.goal_test(node.state):
         return node
-    frontier = FIFOQueue()
-    frontier.append(node)
+    frontier = deque([node])
     explored = set()
     while frontier:
-        node = frontier.pop()
+        node = frontier.popleft()
         explored.add(node.state)
         for child in node.expand(problem):
             if child.state not in explored and child not in frontier:
@@ -251,9 +263,7 @@ def best_first_graph_search(problem, f):
     a best first search you can examine the f values of the path returned."""
     f = memoize(f, 'f')
     node = Node(problem.initial)
-    if problem.goal_test(node.state):
-        return node
-    frontier = PriorityQueue(min, f)
+    frontier = PriorityQueue('min', f)
     frontier.append(node)
     explored = set()
     while frontier:
@@ -265,9 +275,8 @@ def best_first_graph_search(problem, f):
             if child.state not in explored and child not in frontier:
                 frontier.append(child)
             elif child in frontier:
-                incumbent = frontier[child]
-                if f(child) < f(incumbent):
-                    del frontier[incumbent]
+                if f(child) < frontier[child]:
+                    del frontier[child]
                     frontier.append(child)
     return None
 
@@ -400,6 +409,185 @@ def astar_search(problem, h=None):
     return best_first_graph_search(problem, lambda n: n.path_cost + h(n))
 
 # ______________________________________________________________________________
+# A* heuristics 
+
+class EightPuzzle(Problem):
+
+    """ The problem of sliding tiles numbered from 1 to 8 on a 3x3 board,
+    where one of the squares is a blank. A state is represented as a tuple of length 9,
+    where element at index i represents the tile number  at index i (0 if it's an empty square) """
+ 
+    def __init__(self, initial, goal=(1, 2, 3, 4, 5, 6, 7, 8, 0)):
+        """ Define goal state and initialize a problem """
+
+        self.goal = goal
+        Problem.__init__(self, initial, goal)
+    
+    def find_blank_square(self, state):
+        """Return the index of the blank square in a given state"""
+
+        return state.index(0)
+    
+    def actions(self, state):
+        """ Return the actions that can be executed in the given state.
+        The result would be a list, since there are only four possible actions
+        in any given state of the environment """
+        
+        possible_actions = ['UP', 'DOWN', 'LEFT', 'RIGHT']       
+        index_blank_square = self.find_blank_square(state)
+
+        if index_blank_square % 3 == 0:
+            possible_actions.remove('LEFT')
+        if index_blank_square < 3:
+            possible_actions.remove('UP')
+        if index_blank_square % 3 == 2:
+            possible_actions.remove('RIGHT')
+        if index_blank_square > 5:
+            possible_actions.remove('DOWN')
+
+        return possible_actions
+
+    def result(self, state, action):
+        """ Given state and action, return a new state that is the result of the action.
+        Action is assumed to be a valid action in the state """
+
+        # blank is the index of the blank square
+        blank = self.find_blank_square(state)
+        new_state = list(state)
+
+        delta = {'UP':-3, 'DOWN':3, 'LEFT':-1, 'RIGHT':1}
+        neighbor = blank + delta[action]
+        new_state[blank], new_state[neighbor] = new_state[neighbor], new_state[blank]
+
+        return tuple(new_state)
+
+    def goal_test(self, state):
+        """ Given a state, return True if state is a goal state or False, otherwise """
+
+        return state == self.goal
+
+    def check_solvability(self, state):
+        """ Checks if the given state is solvable """
+
+        inversion = 0
+        for i in range(len(state)):
+            for j in range(i+1, len(state)):
+                if (state[i] > state[j]) and state[i] != 0 and state[j]!= 0:
+                    inversion += 1
+        
+        return inversion % 2 == 0
+    
+    def h(self, node):
+        """ Return the heuristic value for a given state. Default heuristic function used is 
+        h(n) = number of misplaced tiles """
+
+        return sum(s != g for (s, g) in zip(node.state, self.goal))
+
+# ______________________________________________________________________________
+
+
+class PlanRoute(Problem):
+    """ The problem of moving the Hybrid Wumpus Agent from one place to other """
+
+    def __init__(self, initial, goal, allowed, dimrow):
+        """ Define goal state and initialize a problem """
+
+        self.dimrow = dimrow
+        self.goal = goal
+        self.allowed = allowed
+        Problem.__init__(self, initial, goal)
+
+    def actions(self, state):
+        """ Return the actions that can be executed in the given state.
+        The result would be a list, since there are only three possible actions
+        in any given state of the environment """
+
+        possible_actions = ['Forward', 'TurnLeft', 'TurnRight']
+        x, y = state.get_location()
+        orientation = state.get_orientation()
+
+        # Prevent Bumps
+        if x == 1 and orientation == 'LEFT':
+            if 'Forward' in possible_actions:
+                possible_actions.remove('Forward')
+        if y == 1 and orientation == 'DOWN':
+            if 'Forward' in possible_actions:
+                possible_actions.remove('Forward')
+        if x == self.dimrow and orientation == 'RIGHT':
+            if 'Forward' in possible_actions:
+                possible_actions.remove('Forward')
+        if y == self.dimrow and orientation == 'UP':
+            if 'Forward' in possible_actions:
+                possible_actions.remove('Forward')
+
+        return possible_actions
+
+    def result(self, state, action):
+        """ Given state and action, return a new state that is the result of the action.
+        Action is assumed to be a valid action in the state """
+        x, y = state.get_location()
+        proposed_loc = list()
+
+        # Move Forward
+        if action == 'Forward':
+            if state.get_orientation() == 'UP':
+                proposed_loc = [x, y + 1]
+            elif state.get_orientation() == 'DOWN':
+                proposed_loc = [x, y - 1]
+            elif state.get_orientation() == 'LEFT':
+                proposed_loc = [x - 1, y]
+            elif state.get_orientation() == 'RIGHT':
+                proposed_loc = [x + 1, y]
+            else:
+                raise Exception('InvalidOrientation')
+
+        # Rotate counter-clockwise
+        elif action == 'TurnLeft':
+            if state.get_orientation() == 'UP':
+                state.set_orientation('LEFT')
+            elif state.get_orientation() == 'DOWN':
+                state.set_orientation('RIGHT')
+            elif state.get_orientation() == 'LEFT':
+                state.set_orientation('DOWN')
+            elif state.get_orientation() == 'RIGHT':
+                state.set_orientation('UP')
+            else:
+                raise Exception('InvalidOrientation')
+
+        # Rotate clockwise
+        elif action == 'TurnRight':
+            if state.get_orientation() == 'UP':
+                state.set_orientation('RIGHT')
+            elif state.get_orientation() == 'DOWN':
+                state.set_orientation('LEFT')
+            elif state.get_orientation() == 'LEFT':
+                state.set_orientation('UP')
+            elif state.get_orientation() == 'RIGHT':
+                state.set_orientation('DOWN')
+            else:
+                raise Exception('InvalidOrientation')
+
+        if proposed_loc in self.allowed:
+            state.set_location(proposed_loc[0], [proposed_loc[1]])
+
+        return state
+
+    def goal_test(self, state):
+        """ Given a state, return True if state is a goal state or False, otherwise """
+
+        return state.get_location() == tuple(self.goal)
+
+    def h(self, node):
+        """ Return the heuristic value for a given state."""
+
+        # Manhattan Heuristic Function
+        x1, y1 = node.state.get_location()
+        x2, y2 = self.goal
+
+        return abs(x2 - x1) + abs(y2 - y1)
+
+
+# ______________________________________________________________________________
 # Other search algorithms
 
 
@@ -467,11 +655,28 @@ def simulated_annealing(problem, schedule=exp_schedule()):
         neighbors = current.expand(problem)
         if not neighbors:
             return current.state
-        next = random.choice(neighbors)
-        delta_e = problem.value(next.state) - problem.value(current.state)
+        next_choice = random.choice(neighbors)
+        delta_e = problem.value(next_choice.state) - problem.value(current.state)
         if delta_e > 0 or probability(math.exp(delta_e / T)):
-            current = next
+            current = next_choice
 
+def simulated_annealing_full(problem, schedule=exp_schedule()):
+    """ This version returns all the states encountered in reaching 
+    the goal state."""
+    states = []
+    current = Node(problem.initial)
+    for t in range(sys.maxsize):
+        states.append(current.state)
+        T = schedule(t)
+        if T == 0:
+            return states
+        neighbors = current.expand(problem)
+        if not neighbors:
+            return current.state
+        next_choice = random.choice(neighbors)
+        delta_e = problem.value(next_choice.state) - problem.value(current.state)
+        if delta_e > 0 or probability(math.exp(delta_e / T)):
+            current = next_choice
 
 def and_or_graph_search(problem):
     """[Figure 4.11]Used when the environment is nondeterministic and completely observable.
@@ -508,39 +713,37 @@ def and_or_graph_search(problem):
     # body of and or search
     return or_search(problem.initial, problem, [])
 
+# Pre-defined actions for PeakFindingProblem
+directions4 = { 'W':(-1, 0), 'N':(0, 1), 'E':(1, 0), 'S':(0, -1) }
+directions8 = dict(directions4) 
+directions8.update({'NW':(-1, 1), 'NE':(1, 1), 'SE':(1, -1), 'SW':(-1, -1) })
 
 class PeakFindingProblem(Problem):
     """Problem of finding the highest peak in a limited grid"""
 
-    def __init__(self, initial, grid):
+    def __init__(self, initial, grid, defined_actions=directions4):
         """The grid is a 2 dimensional array/list whose state is specified by tuple of indices"""
         Problem.__init__(self, initial)
         self.grid = grid
+        self.defined_actions = defined_actions
         self.n = len(grid)
         assert self.n > 0
         self.m = len(grid[0])
         assert self.m > 0
 
     def actions(self, state):
-        """Allows movement in only 4 directions"""
-        # TODO: Add flag to allow diagonal motion
+        """Returns the list of actions which are allowed to be taken from the given state"""
         allowed_actions = []
-        if state[0] > 0:
-            allowed_actions.append('N')
-        if state[0] < self.n - 1:
-            allowed_actions.append('S')
-        if state[1] > 0:
-            allowed_actions.append('W')
-        if state[1] < self.m - 1:
-            allowed_actions.append('E')
+        for action in self.defined_actions:
+            next_state = vector_add(state, self.defined_actions[action])
+            if next_state[0] >= 0 and next_state[1] >= 0 and next_state[0] <= self.n - 1 and next_state[1] <= self.m - 1:
+                allowed_actions.append(action)
+
         return allowed_actions
 
     def result(self, state, action):
         """Moves in the direction specified by action"""
-        x, y = state
-        x = x + (1 if action == 'S' else (-1 if action == 'N' else 0))
-        y = y + (1 if action == 'E' else (-1 if action == 'W' else 0))
-        return (x, y)
+        return vector_add(state, self.defined_actions[action])
 
     def value(self, state):
         """Value of a state is the value it is the index to"""
@@ -561,8 +764,8 @@ class OnlineDFSAgent:
         self.problem = problem
         self.s = None
         self.a = None
-        self.untried = defaultdict(list)
-        self.unbacktracked = defaultdict(list)
+        self.untried = dict()
+        self.unbacktracked = dict()
         self.result = {}
 
     def __call__(self, percept):
@@ -581,13 +784,13 @@ class OnlineDFSAgent:
                     self.a = None
                 else:
                     # else a <- an action b such that result[s', b] = POP(unbacktracked[s'])
-                    unbacktracked_pop = self.unbacktracked[s1].pop(0)
+                    unbacktracked_pop = self.unbacktracked.pop(s1)
                     for (s, b) in self.result.keys():
                         if self.result[(s, b)] == unbacktracked_pop:
                             self.a = b
                             break
             else:
-                self.a = self.untried[s1].pop(0)
+                self.a = self.untried.pop(s1)
         self.s = s1
         return self.a
 
@@ -611,10 +814,10 @@ class OnlineSearchProblem(Problem):
         self.graph = graph
 
     def actions(self, state):
-        return self.graph.dict[state].keys()
+        return self.graph.graph_dict[state].keys()
 
     def output(self, state, action):
-        return self.graph.dict[state][action]
+        return self.graph.graph_dict[state][action]
 
     def h(self, state):
         """Returns least possible cost to reach a goal for the given state."""
@@ -637,7 +840,7 @@ class LRTAStarAgent:
 
     """ [Figure 4.24]
     Abstract class for LRTA*-Agent. A problem needs to be
-    provided which is an instanace of a subclass of Problem Class.
+    provided which is an instance of a subclass of Problem Class.
 
     Takes a OnlineSearchProblem [Figure 4.23] as a problem.
     """
@@ -702,27 +905,30 @@ def genetic_search(problem, fitness_fn, ngen=1000, pmut=0.1, n=20):
     return genetic_algorithm(states[:n], problem.value, ngen, pmut)
 
 
-def genetic_algorithm(population, fitness_fn, gene_pool=[0, 1], f_thres=None, ngen=1000, pmut=0.1):  # noqa
+def genetic_algorithm(population, fitness_fn, gene_pool=[0, 1], f_thres=None, ngen=1000, pmut=0.1):
     """[Figure 4.8]"""
     for i in range(ngen):
-        new_population = []
-        random_selection = selection_chances(fitness_fn, population)
-        for j in range(len(population)):
-            x = random_selection()
-            y = random_selection()
-            child = reproduce(x, y)
-            if random.uniform(0, 1) < pmut:
-                child = mutate(child, gene_pool)
-            new_population.append(child)
+        population = [mutate(recombine(*select(2, population, fitness_fn)), gene_pool, pmut)
+                      for i in range(len(population))]
 
-        population = new_population
+        fittest_individual = fitness_threshold(fitness_fn, f_thres, population)
+        if fittest_individual:
+            return fittest_individual
 
-        if f_thres:
-            fittest_individual = argmax(population, key=fitness_fn)
-            if fitness_fn(fittest_individual) >= f_thres:
-                return fittest_individual
 
     return argmax(population, key=fitness_fn)
+
+
+def fitness_threshold(fitness_fn, f_thres, population):
+    if not f_thres:
+        return None
+
+    fittest_individual = argmax(population, key=fitness_fn)
+    if fitness_fn(fittest_individual) >= f_thres:
+        return fittest_individual
+
+    return None
+
 
 
 def init_population(pop_number, gene_pool, state_length):
@@ -739,18 +945,33 @@ def init_population(pop_number, gene_pool, state_length):
     return population
 
 
-def selection_chances(fitness_fn, population):
+def select(r, population, fitness_fn):
     fitnesses = map(fitness_fn, population)
-    return weighted_sampler(population, fitnesses)
+    sampler = weighted_sampler(population, fitnesses)
+    return [sampler() for i in range(r)]
 
 
-def reproduce(x, y):
+def recombine(x, y):
     n = len(x)
-    c = random.randrange(1, n)
+    c = random.randrange(0, n)
     return x[:c] + y[c:]
 
 
-def mutate(x, gene_pool):
+def recombine_uniform(x, y):
+    n = len(x)
+    result = [0] * n
+    indexes = random.sample(range(n), n)
+    for i in range(n):
+        ix = indexes[i]
+        result[ix] = x[ix] if i < n / 2 else y[ix]
+
+    return ''.join(str(r) for r in result)
+        
+
+def mutate(x, gene_pool, pmut):
+    if random.uniform(0, 1) >= pmut:
+        return x
+
     n = len(x)
     g = len(gene_pool)
     c = random.randrange(0, n)
@@ -768,7 +989,7 @@ def mutate(x, gene_pool):
 
 class Graph:
 
-    """A graph connects nodes (verticies) by edges (links).  Each edge can also
+    """A graph connects nodes (vertices) by edges (links).  Each edge can also
     have a length associated with it.  The constructor call is something like:
         g = Graph({'A': {'B': 1, 'C': 2})
     this makes a graph with 3 nodes, A, B, and C, with an edge of length 1 from
@@ -781,16 +1002,16 @@ class Graph:
     length of the link from A to B.  'Lengths' can actually be any object at
     all, and nodes can be any hashable object."""
 
-    def __init__(self, dict=None, directed=True):
-        self.dict = dict or {}
+    def __init__(self, graph_dict=None, directed=True):
+        self.graph_dict = graph_dict or {}
         self.directed = directed
         if not directed:
             self.make_undirected()
 
     def make_undirected(self):
         """Make a digraph into an undirected graph by adding symmetric edges."""
-        for a in list(self.dict.keys()):
-            for (b, dist) in self.dict[a].items():
+        for a in list(self.graph_dict.keys()):
+            for (b, dist) in self.graph_dict[a].items():
                 self.connect1(b, a, dist)
 
     def connect(self, A, B, distance=1):
@@ -802,13 +1023,13 @@ class Graph:
 
     def connect1(self, A, B, distance):
         """Add a link from A to B of given distance, in one direction only."""
-        self.dict.setdefault(A, {})[B] = distance
+        self.graph_dict.setdefault(A, {})[B] = distance
 
     def get(self, a, b=None):
         """Return a link distance or a dict of {node: distance} entries.
         .get(a,b) returns the distance or None;
         .get(a) returns a dict of {node: distance} entries, possibly {}."""
-        links = self.dict.setdefault(a, {})
+        links = self.graph_dict.setdefault(a, {})
         if b is None:
             return links
         else:
@@ -816,12 +1037,15 @@ class Graph:
 
     def nodes(self):
         """Return a list of nodes in the graph."""
-        return list(self.dict.keys())
+        s1 = set([k for k in self.graph_dict.keys()])
+        s2 = set([k2 for v in self.graph_dict.values() for k2, v2 in v.items()])
+        nodes = s1.union(s2)
+        return list(nodes)
 
 
-def UndirectedGraph(dict=None):
+def UndirectedGraph(graph_dict=None):
     """Build a Graph where every edge (including future ones) goes both ways."""
-    return Graph(dict=dict, directed=False)
+    return Graph(graph_dict = graph_dict, directed=False)
 
 
 def RandomGraph(nodes=list(range(10)), min_links=2, width=400, height=300,
@@ -893,7 +1117,7 @@ Each state is represented as
 7 - CCL     Clean                         Clean                       Left
 8 - CCR     Clean                         Clean                       Right
 """
-vacumm_world = Graph(dict(
+vacuum_world = Graph(dict(
     State_1=dict(Suck=['State_7', 'State_5'], Right=['State_2']),
     State_2=dict(Suck=['State_8', 'State_4'], Left=['State_2']),
     State_3=dict(Suck=['State_7'], Right=['State_4']),
@@ -958,7 +1182,7 @@ class GraphProblem(Problem):
     def find_min_edge(self):
         """Find minimum value of edges."""
         m = infinity
-        for d in self.graph.dict.values():
+        for d in self.graph.graph_dict.values():
             local_min = min(d.values())
             m = min(m, local_min)
 
@@ -1000,31 +1224,32 @@ class NQueensProblem(Problem):
     """The problem of placing N queens on an NxN board with none attacking
     each other.  A state is represented as an N-element array, where
     a value of r in the c-th entry means there is a queen at column c,
-    row r, and a value of None means that the c-th column has not been
+    row r, and a value of -1 means that the c-th column has not been
     filled in yet.  We fill in columns left to right.
     >>> depth_first_tree_search(NQueensProblem(8))
-    <Node [7, 3, 0, 2, 5, 1, 6, 4]>
+    <Node (7, 3, 0, 2, 5, 1, 6, 4)>
     """
 
     def __init__(self, N):
         self.N = N
-        self.initial = [None] * N
+        self.initial = tuple([-1] * N)
+        Problem.__init__(self, self.initial)
 
     def actions(self, state):
         """In the leftmost empty column, try all non-conflicting rows."""
-        if state[-1] is not None:
+        if state[-1] is not -1:
             return []  # All columns filled; no successors
         else:
-            col = state.index(None)
+            col = state.index(-1)
             return [row for row in range(self.N)
                     if not self.conflicted(state, row, col)]
 
     def result(self, state, row):
         """Place the next queen at the given row."""
-        col = state.index(None)
-        new = state[:]
+        col = state.index(-1)
+        new = list(state[:])
         new[col] = row
-        return new
+        return tuple(new)
 
     def conflicted(self, state, row, col):
         """Would placing a queen at (row, col) conflict with anything?"""
@@ -1040,10 +1265,20 @@ class NQueensProblem(Problem):
 
     def goal_test(self, state):
         """Check if all columns filled, no conflicts."""
-        if state[-1] is None:
+        if state[-1] is -1:
             return False
         return not any(self.conflicted(state, state[col], col)
                        for col in range(len(state)))
+
+    def h(self, node):
+        """Return number of conflicting queens for a given node"""
+        num_conflicts = 0
+        for (r1, c1) in enumerate(node.state):
+            for (r2, c2) in enumerate(node.state):
+                if (r1, c1) != (r2, c2):
+                    num_conflicts += self.conflict(r1, c1, r2, c2)
+
+        return num_conflicts
 
 # ______________________________________________________________________________
 # Inverse Boggle: Search for a high-scoring Boggle board. A good domain for
@@ -1302,7 +1537,7 @@ class InstrumentedProblem(Problem):
 
 def compare_searchers(problems, header,
                       searchers=[breadth_first_tree_search,
-                                 breadth_first_search,
+                                 breadth_first_graph_search,
                                  depth_first_graph_search,
                                  iterative_deepening_search,
                                  depth_limited_search,
@@ -1322,3 +1557,4 @@ def compare_graph_searchers():
                                 GraphProblem('Q', 'WA', australia_map)],
                       header=['Searcher', 'romania_map(Arad, Bucharest)',
                               'romania_map(Oradea, Neamt)', 'australia_map'])
+

@@ -37,6 +37,9 @@ EnvCanvas ## Canvas to display the environment of an EnvGUI
 
 from utils import distance_squared, turn_heading
 from statistics import mean
+from ipythonblocks import BlockGrid
+from IPython.display import HTML, display
+from time import sleep
 
 import random
 import copy
@@ -96,7 +99,7 @@ class Agent(Thing):
         self.program = program
 
     def can_grab(self, thing):
-        """Returns True if this agent can grab this thing.
+        """Return True if this agent can grab this thing.
         Override for appropriate subclasses of Agent and Thing."""
         return False
 
@@ -131,7 +134,16 @@ def TableDrivenAgentProgram(table):
 
 
 def RandomAgentProgram(actions):
-    """An agent that chooses an action at random, ignoring all percepts."""
+    """An agent that chooses an action at random, ignoring all percepts.
+    >>> list = ['Right', 'Left', 'Suck', 'NoOp']
+    >>> program = RandomAgentProgram(list)
+    >>> agent = Agent(program)
+    >>> environment = TrivialVacuumEnvironment()
+    >>> environment.add_thing(agent)
+    >>> environment.run()
+    >>> environment.status == {(1, 0): 'Clean' , (0, 0): 'Clean'}
+    True
+    """
     return lambda percept: random.choice(actions)
 
 # ______________________________________________________________________________
@@ -171,7 +183,14 @@ loc_A, loc_B = (0, 0), (1, 0)  # The two locations for the Vacuum world
 
 
 def RandomVacuumAgent():
-    """Randomly choose one of the actions from the vacuum environment."""
+    """Randomly choose one of the actions from the vacuum environment.
+    >>> agent = RandomVacuumAgent()
+    >>> environment = TrivialVacuumEnvironment()
+    >>> environment.add_thing(agent)
+    >>> environment.run()
+    >>> environment.status == {(1,0):'Clean' , (0,0) : 'Clean'}
+    True
+    """
     return Agent(RandomAgentProgram(['Right', 'Left', 'Suck', 'NoOp']))
 
 
@@ -181,18 +200,25 @@ def TableDrivenVacuumAgent():
              ((loc_A, 'Dirty'),): 'Suck',
              ((loc_B, 'Clean'),): 'Left',
              ((loc_B, 'Dirty'),): 'Suck',
-             ((loc_A, 'Clean'), (loc_A, 'Clean')): 'Right',
-             ((loc_A, 'Clean'), (loc_A, 'Dirty')): 'Suck',
-             # ...
-             ((loc_A, 'Clean'), (loc_A, 'Clean'), (loc_A, 'Clean')): 'Right',
-             ((loc_A, 'Clean'), (loc_A, 'Clean'), (loc_A, 'Dirty')): 'Suck',
-             # ...
+             ((loc_A, 'Dirty'), (loc_A, 'Clean')): 'Right',
+             ((loc_A, 'Clean'), (loc_B, 'Dirty')): 'Suck',
+             ((loc_B, 'Clean'), (loc_A, 'Dirty')): 'Suck',
+             ((loc_B, 'Dirty'), (loc_B, 'Clean')): 'Left',
+             ((loc_A, 'Dirty'), (loc_A, 'Clean'), (loc_B, 'Dirty')): 'Suck',
+             ((loc_B, 'Dirty'), (loc_B, 'Clean'), (loc_A, 'Dirty')): 'Suck'
              }
     return Agent(TableDrivenAgentProgram(table))
 
 
 def ReflexVacuumAgent():
-    """A reflex agent for the two-state vacuum environment. [Figure 2.8]"""
+    """A reflex agent for the two-state vacuum environment. [Figure 2.8]
+    >>> agent = ReflexVacuumAgent()
+    >>> environment = TrivialVacuumEnvironment()
+    >>> environment.add_thing(agent)
+    >>> environment.run()
+    >>> environment.status == {(1,0):'Clean' , (0,0) : 'Clean'}
+    True
+    """
     def program(percept):
         location, status = percept
         if status == 'Dirty':
@@ -205,7 +231,14 @@ def ReflexVacuumAgent():
 
 
 def ModelBasedVacuumAgent():
-    """An agent that keeps track of what locations are clean or dirty."""
+    """An agent that keeps track of what locations are clean or dirty.
+    >>> agent = ModelBasedVacuumAgent()
+    >>> environment = TrivialVacuumEnvironment()
+    >>> environment.add_thing(agent)
+    >>> environment.run()
+    >>> environment.status == {(1,0):'Clean' , (0,0) : 'Clean'}
+    True
+    """
     model = {loc_A: None, loc_B: None}
 
     def program(percept):
@@ -299,7 +332,7 @@ class Environment:
     def add_thing(self, thing, location=None):
         """Add a thing to the environment, setting its location. For
         convenience, if thing is an agent program we make a new agent
-        for it. (Shouldn't need to override this."""
+        for it. (Shouldn't need to override this.)"""
         if not isinstance(thing, Thing):
             thing = Agent(thing)
         if thing in self.things:
@@ -342,6 +375,22 @@ class Direction:
         self.direction = direction
 
     def __add__(self, heading):
+        """
+        >>> d = Direction('right')
+        >>> l1 = d.__add__(Direction.L)
+        >>> l2 = d.__add__(Direction.R)
+        >>> l1.direction
+        'up'
+        >>> l2.direction
+        'down'
+        >>> d = Direction('down')
+        >>> l1 = d.__add__('right')
+        >>> l2 = d.__add__('left')
+        >>> l1.direction == Direction.L
+        True
+        >>> l2.direction == Direction.R
+        True
+        """
         if self.direction == self.R:
             return{
                 self.R: Direction(self.D),
@@ -364,6 +413,16 @@ class Direction:
             }.get(heading, None)
 
     def move_forward(self, from_location):
+        """
+        >>> d = Direction('up')
+        >>> l1 = d.move_forward((0, 0))
+        >>> l1
+        (0, -1)
+        >>> d = Direction(Direction.R)
+        >>> l1 = d.move_forward((0, 0))
+        >>> l1
+        (1, 0)
+        """
         x, y = from_location
         if self.direction == self.R:
             return (x + 1, y)
@@ -444,7 +503,7 @@ class XYEnvironment(Environment):
         return thing.bump
 
     def add_thing(self, thing, location=(1, 1), exclude_duplicate_class_items=False):
-        """Adds things to the world. If (exclude_duplicate_class_items) then the item won't be
+        """Add things to the world. If (exclude_duplicate_class_items) then the item won't be
         added if the location has at least one item of the same class."""
         if (self.is_inbounds(location)):
             if (exclude_duplicate_class_items and
@@ -484,7 +543,7 @@ class XYEnvironment(Environment):
         for x in range(self.width):
             self.add_thing(Wall(), (x, 0))
             self.add_thing(Wall(), (x, self.height - 1))
-        for y in range(self.height):
+        for y in range(1, self.height-1):
             self.add_thing(Wall(), (0, y))
             self.add_thing(Wall(), (self.width - 1, y))
 
@@ -516,14 +575,6 @@ class Wall(Obstacle):
     pass
 
 # ______________________________________________________________________________
-
-
-try:
-    from ipythonblocks import BlockGrid
-    from IPython.display import HTML, display
-    from time import sleep
-except:
-    pass
 
 
 class GraphicEnvironment(XYEnvironment):
@@ -663,6 +714,7 @@ class VacuumEnvironment(XYEnvironment):
         return (status, bump)
 
     def execute_action(self, agent, action):
+        agent.bump = False
         if action == 'Suck':
             dirt_list = self.list_things_at(agent.location, Dirt)
             if dirt_list != []:
@@ -809,7 +861,7 @@ class WumpusEnvironment(XYEnvironment):
         self.add_thing(Explorer(program), (1, 1), True)
 
     def get_world(self, show_walls=True):
-        """Returns the items in the world"""
+        """Return the items in the world"""
         result = []
         x_start, y_start = (0, 0) if show_walls else (1, 1)
 
@@ -826,7 +878,7 @@ class WumpusEnvironment(XYEnvironment):
         return result
 
     def percepts_from(self, agent, location, tclass=Thing):
-        """Returns percepts from a given location,
+        """Return percepts from a given location,
         and replaces some items with percepts from chapter 7."""
         thing_percepts = {
             Gold: Glitter(),
@@ -846,7 +898,7 @@ class WumpusEnvironment(XYEnvironment):
         return result if len(result) else [None]
 
     def percept(self, agent):
-        """Returns things in adjacent (not diagonal) cells of the agent.
+        """Return things in adjacent (not diagonal) cells of the agent.
         Result format: [Left, Right, Up, Down, Center / Current location]"""
         x, y = agent.location
         result = []
@@ -907,7 +959,7 @@ class WumpusEnvironment(XYEnvironment):
                 agent.has_arrow = False
 
     def in_danger(self, agent):
-        """Checks if Explorer is in danger (Pit or Wumpus), if he is, kill him"""
+        """Check if Explorer is in danger (Pit or Wumpus), if he is, kill him"""
         for thing in self.list_things_at(agent.location):
             if isinstance(thing, Pit) or (isinstance(thing, Wumpus) and thing.alive):
                 agent.alive = False
@@ -940,14 +992,30 @@ def compare_agents(EnvFactory, AgentFactories, n=10, steps=1000):
     """See how well each of several agents do in n instances of an environment.
     Pass in a factory (constructor) for environments, and several for agents.
     Create n instances of the environment, and run each agent in copies of
-    each one for steps. Return a list of (agent, average-score) tuples."""
+    each one for steps. Return a list of (agent, average-score) tuples.
+    >>> environment = TrivialVacuumEnvironment
+    >>> agents = [ModelBasedVacuumAgent, ReflexVacuumAgent]
+    >>> result = compare_agents(environment, agents)
+    >>> performance_ModelBasedVacummAgent = result[0][1]
+    >>> performance_ReflexVacummAgent = result[1][1]
+    >>> performance_ReflexVacummAgent <= performance_ModelBasedVacummAgent
+    True
+    """
     envs = [EnvFactory() for i in range(n)]
     return [(A, test_agent(A, steps, copy.deepcopy(envs)))
             for A in AgentFactories]
 
 
 def test_agent(AgentFactory, steps, envs):
-    """Return the mean score of running an agent in each of the envs, for steps"""
+    """Return the mean score of running an agent in each of the envs, for steps
+    >>> def constant_prog(percept):
+    ...     return percept
+    ...
+    >>> agent = Agent(constant_prog)
+    >>> result = agent.program(5)
+    >>> result == 5
+    True
+    """
     def score(env):
         agent = AgentFactory()
         env.add_thing(agent)

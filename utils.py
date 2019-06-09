@@ -3,11 +3,13 @@
 import bisect
 import collections
 import collections.abc
+import heapq
 import operator
 import os.path
 import random
 import math
 import functools
+import numpy as np
 from itertools import chain, combinations
 
 
@@ -16,28 +18,40 @@ from itertools import chain, combinations
 
 
 def sequence(iterable):
-    """Coerce iterable to sequence, if it is not already one."""
+    """Converts iterable to sequence, if it is not already one."""
     return (iterable if isinstance(iterable, collections.abc.Sequence)
-            else tuple(iterable))
+            else tuple([iterable]))
 
 
 def removeall(item, seq):
-    """Return a copy of seq (or string) with all occurences of item removed."""
+    """Return a copy of seq (or string) with all occurrences of item removed."""
     if isinstance(seq, str):
         return seq.replace(item, '')
     else:
         return [x for x in seq if x != item]
 
 
-def unique(seq):  # TODO: replace with set
+def unique(seq):
     """Remove duplicate elements from seq. Assumes hashable elements."""
     return list(set(seq))
 
 
 def count(seq):
     """Count the number of items in sequence that are interpreted as true."""
-    return sum(bool(x) for x in seq)
+    return sum(map(bool, seq))
 
+def multimap(items):
+    """Given (key, val) pairs, return {key: [val, ....], ...}."""
+    result = collections.defaultdict(list)
+    for (key, val) in items:
+        result[key].append(val)
+    return dict(result)
+
+def multimap_items(mmap):
+    """Yield all (key, val) pairs stored in the multimap."""
+    for (key, vals) in mmap.items():
+        for val in vals:
+            yield key, val
 
 def product(numbers):
     """Return the product of the numbers, e.g. product([2, 3, 10]) == 60"""
@@ -48,14 +62,8 @@ def product(numbers):
 
 
 def first(iterable, default=None):
-    """Return the first element of an iterable or the next element of a generator; or default."""
-    try:
-        return iterable[0]
-    except IndexError:
-        return default
-    except TypeError:
-        return next(iterable, default)
-
+    """Return the first element of an iterable; or default."""
+    return next(iter(iterable), default)
 
 def is_in(elt, seq):
     """Similar to (elt in seq), but compares with 'is', not '=='."""
@@ -71,12 +79,11 @@ def mode(data):
 def powerset(iterable):
     """powerset([1,2,3]) --> (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"""
     s = list(iterable)
-    return list(chain.from_iterable(combinations(s, r) for r in range(len(s)+1)))[1:]
+    return list(chain.from_iterable(combinations(s, r) for r in range(len(s) + 1)))[1:]
 
 
 # ______________________________________________________________________________
 # argmin and argmax
-
 
 identity = lambda x: x
 
@@ -135,7 +142,7 @@ def element_wise_product(X, Y):
 
 
 def matrix_multiplication(X_M, *Y_M):
-    """Return a matrix as a matrix-multiplication of X_M and arbitary number of matrices *Y_M"""
+    """Return a matrix as a matrix-multiplication of X_M and arbitrary number of matrices *Y_M"""
 
     def _mat_mult(X_M, Y_M):
         """Return a matrix as a matrix-multiplication of two matrices X_M and Y_M
@@ -193,7 +200,7 @@ def inverse_matrix(X):
     assert len(X[0]) == 2
     det = X[0][0] * X[1][1] - X[0][1] * X[1][0]
     assert det != 0
-    inv_mat = scalar_matrix_product(1.0/det, [[X[1][1], -X[0][1]], [-X[1][0], X[0][0]]])
+    inv_mat = scalar_matrix_product(1.0 / det, [[X[1][1], -X[0][1]], [-X[1][0], X[0][0]]])
 
     return inv_mat
 
@@ -221,16 +228,28 @@ def weighted_sampler(seq, weights):
     return lambda: seq[bisect.bisect(totals, random.uniform(0, totals[-1]))]
 
 
+def weighted_choice(choices):
+    """A weighted version of random.choice"""
+    # NOTE: Shoule be replaced by random.choices if we port to Python 3.6
+
+    total = sum(w for _, w in choices)
+    r = random.uniform(0, total)
+    upto = 0
+    for c, w in choices:
+        if upto + w >= r:
+            return c, w
+        upto += w
+	
 def rounder(numbers, d=4):
     """Round a single number, or sequence of numbers, to d decimal places."""
     if isinstance(numbers, (int, float)):
         return round(numbers, d)
     else:
-        constructor = type(numbers)     # Can be list, set, tuple, etc.
+        constructor = type(numbers)  # Can be list, set, tuple, etc.
         return constructor(rounder(n, d) for n in numbers)
 
 
-def num_or_str(x):
+def num_or_str(x): # TODO: rename as `atom`
     """The argument is a string; convert to a number if
        possible, or strip it."""
     try:
@@ -256,7 +275,7 @@ def normalize(dist):
 
 def norm(X, n=2):
     """Return the n-norm of vector X"""
-    return sum([x**n for x in X])**(1/n)
+    return sum([x ** n for x in X]) ** (1 / n)
 
 
 def clip(x, lowest, highest):
@@ -270,9 +289,55 @@ def sigmoid_derivative(value):
 
 def sigmoid(x):
     """Return activation value of x with sigmoid function"""
-    return 1/(1 + math.exp(-x))
+    return 1 / (1 + math.exp(-x))
 
 
+
+def relu_derivative(value):
+	if value > 0:
+		return 1
+	else:
+		return 0
+
+def elu(x, alpha=0.01):
+	if x > 0:
+		return x
+	else:
+		return alpha * (math.exp(x) - 1)
+		
+def elu_derivative(value, alpha = 0.01):
+	if value > 0:
+		return 1
+	else:
+		return alpha * math.exp(value)
+
+def tanh(x):
+	return np.tanh(x)
+
+def tanh_derivative(value):
+	return (1 - (value ** 2))
+
+def leaky_relu(x, alpha = 0.01):
+	if x > 0:
+		return x
+	else:
+		return alpha * x
+
+def leaky_relu_derivative(value, alpha=0.01):
+	if value > 0:
+		return 1
+	else:
+		return alpha
+
+def relu(x):
+	return max(0, x)
+	
+def relu_derivative(value):
+	if value > 0:
+		return 1
+	else:
+		return 0
+		
 def step(x):
     """Return activation value of x with sign function"""
     return 1 if x >= 0 else 0
@@ -280,7 +345,7 @@ def step(x):
 
 def gaussian(mean, st_dev, x):
     """Given the mean and standard deviation of a distribution, it returns the probability of x."""
-    return 1/(math.sqrt(2*math.pi)*st_dev)*math.e**(-0.5*(float(x-mean)/st_dev)**2)
+    return 1 / (math.sqrt(2 * math.pi) * st_dev) * math.e ** (-0.5 * (float(x - mean) / st_dev) ** 2)
 
 
 try:  # math.isclose was added in Python 3.5; but we might be in 3.4
@@ -289,20 +354,6 @@ except ImportError:
     def isclose(a, b, rel_tol=1e-09, abs_tol=0.0):
         """Return true if numbers a and b are close to each other."""
         return abs(a - b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
-
-
-def weighted_choice(choices):
-    """A weighted version of random.choice"""
-    # NOTE: Shoule be replaced by random.choices if we port to Python 3.6
-
-    total = sum(w for _, w in choices)
-    r = random.uniform(0, total)
-    upto = 0
-    for c, w in choices:
-        if upto + w >= r:
-            return c, w
-        upto += w
-
 
 # ______________________________________________________________________________
 # Grid Functions
@@ -335,7 +386,7 @@ def distance_squared(a, b):
     """The square of the distance between two (x, y) points."""
     xA, yA = a
     xB, yB = b
-    return (xA - xB)**2 + (yA - yB)**2
+    return (xA - xB) ** 2 + (yA - yB) ** 2
 
 
 def vector_clip(vector, lowest, highest):
@@ -347,6 +398,20 @@ def vector_clip(vector, lowest, highest):
 
 # ______________________________________________________________________________
 # Misc Functions
+
+class injection():
+    """Dependency injection of temporary values for global functions/classes/etc.
+    E.g., `with injection(DataBase=MockDataBase): ...`"""
+
+    def __init__(self, **kwds):
+        self.new = kwds
+
+    def __enter__(self):
+        self.old = {v: globals()[v] for v in self.new}
+        globals().update(self.new)
+
+    def __exit__(self, type, value, traceback):
+        globals().update(self.old)
 
 
 def memoize(fn, slot=None, maxsize=32):
@@ -401,8 +466,8 @@ def print_table(table, header=None, sep='   ', numfmt='{}'):
              for row in table]
 
     sizes = list(
-            map(lambda seq: max(map(len, seq)),
-                list(zip(*[map(str, row) for row in table]))))
+        map(lambda seq: max(map(len, seq)),
+            list(zip(*[map(str, row) for row in table]))))
 
     for row in table:
         print(sep.join(getattr(
@@ -413,12 +478,12 @@ def open_data(name, mode='r'):
     aima_root = os.path.dirname(__file__)
     aima_file = os.path.join(aima_root, *['aima-data', name])
 
-    return open(aima_file)
+    return open(aima_file, mode=mode)
 
 
 def failure_test(algorithm, tests):
     """Grades the given algorithm based on how many tests it passes.
-    Most algorithms have arbitary output on correct execution, which is difficult
+    Most algorithms have arbitrary output on correct execution, which is difficult
     to check for correctness. On the other hand, a lot of algorithms output something
     particular on fail (for example, False, or None).
     tests is a list with each element in the form: (values, failure_output)."""
@@ -552,18 +617,20 @@ class Expr(object):
                 and self.op == other.op
                 and self.args == other.args)
 
-    def __hash__(self): return hash(self.op) ^ hash(self.args)
+    def __hash__(self):
+        return hash(self.op) ^ hash(self.args)
 
     def __repr__(self):
         op = self.op
         args = [str(arg) for arg in self.args]
-        if op.isidentifier():       # f(x) or f(x, y)
+        if op.isidentifier():  # f(x) or f(x, y)
             return '{}({})'.format(op, ', '.join(args)) if args else op
-        elif len(args) == 1:        # -x or -(x + 1)
+        elif len(args) == 1:  # -x or -(x + 1)
             return op + args[0]
-        else:                       # (x - y)
+        else:  # (x - y)
             opp = (' ' + op + ' ')
             return '(' + opp.join(args) + ')'
+
 
 # An 'Expression' is either an Expr or a Number.
 # Symbol is not an explicit type; it is any Expr with 0 args.
@@ -598,11 +665,13 @@ def arity(expression):
     else:  # expression is a number
         return 0
 
+
 # For operators that are not defined in Python, we allow new InfixOps:
 
 
 class PartialExpr:
     """Given 'P |'==>'| Q, first form PartialExpr('==>', P), then combine with Q."""
+
     def __init__(self, op, lhs):
         self.op, self.lhs = op, lhs
 
@@ -645,6 +714,7 @@ class defaultkeydict(collections.defaultdict):
     >>> d = defaultkeydict(len); d['four']
     4
     """
+
     def __missing__(self, key):
         self[key] = result = self.default_factory(key)
         return result
@@ -654,132 +724,89 @@ class hashabledict(dict):
     """Allows hashing by representing a dictionary as tuple of key:value pairs
        May cause problems as the hash value may change during runtime
     """
-    def __tuplify__(self):
-        return tuple(sorted(self.items()))
 
     def __hash__(self):
-        return hash(self.__tuplify__())
-
-    def __lt__(self, odict):
-        assert isinstance(odict, hashabledict)
-        return self.__tuplify__() < odict.__tuplify__()
-
-    def __gt__(self, odict):
-        assert isinstance(odict, hashabledict)
-        return self.__tuplify__() > odict.__tuplify__()
-
-    def __le__(self, odict):
-        assert isinstance(odict, hashabledict)
-        return self.__tuplify__() <= odict.__tuplify__()
-
-    def __ge__(self, odict):
-        assert isinstance(odict, hashabledict)
-        return self.__tuplify__() >= odict.__tuplify__()
+        return 1
 
 
 # ______________________________________________________________________________
 # Queues: Stack, FIFOQueue, PriorityQueue
+# Stack and FIFOQueue are implemented as list and collection.deque
+# PriorityQueue is implemented here
 
-# TODO: queue.PriorityQueue
-# TODO: Priority queues may not belong here -- see treatment in search.py
 
+class PriorityQueue:
+    """A Queue in which the minimum (or maximum) element (as determined by f and
+    order) is returned first.
+    If order is 'min', the item with minimum f(x) is
+    returned first; if order is 'max', then it is the item with maximum f(x).
+    Also supports dict-like lookup."""
 
-class Queue:
+    def __init__(self, order='min', f=lambda x: x):
+        self.heap = []
 
-    """Queue is an abstract class/interface. There are three types:
-        Stack(): A Last In First Out Queue.
-        FIFOQueue(): A First In First Out Queue.
-        PriorityQueue(order, f): Queue in sorted order (default min-first).
-    Each type supports the following methods and functions:
-        q.append(item)  -- add an item to the queue
-        q.extend(items) -- equivalent to: for item in items: q.append(item)
-        q.pop()         -- return the top item from the queue
-        len(q)          -- number of items in q (also q.__len())
-        item in q       -- does q contain item?
-    Note that isinstance(Stack(), Queue) is false, because we implement stacks
-    as lists.  If Python ever gets interfaces, Queue will be an interface."""
+        if order == 'min':
+            self.f = f
+        elif order == 'max':  # now item with max f(x)
+            self.f = lambda x: -f(x)  # will be popped first
+        else:
+            raise ValueError("order must be either 'min' or 'max'.")
 
-    def __init__(self):
-        raise NotImplementedError
+    def append(self, item):
+        """Insert item at its correct position."""
+        heapq.heappush(self.heap, (self.f(item), item))
 
     def extend(self, items):
+        """Insert each item in items at its correct position."""
         for item in items:
             self.append(item)
 
-
-def Stack():
-    """Return an empty list, suitable as a Last-In-First-Out Queue."""
-    return []
-
-
-class FIFOQueue(Queue):
-
-    """A First-In-First-Out Queue."""
-
-    def __init__(self, maxlen=None, items=[]):
-        self.queue = collections.deque(items, maxlen)
-
-    def append(self, item):
-        if not self.queue.maxlen or len(self.queue) < self.queue.maxlen:
-            self.queue.append(item)
-        else:
-            raise Exception('FIFOQueue is full')
-
-    def extend(self, items):
-        if not self.queue.maxlen or len(self.queue) + len(items) <= self.queue.maxlen:
-            self.queue.extend(items)
-        else:
-            raise Exception('FIFOQueue max length exceeded')
-
     def pop(self):
-        if len(self.queue) > 0:
-            return self.queue.popleft()
+        """Pop and return the item (with min or max f(x) value)
+        depending on the order."""
+        if self.heap:
+            return heapq.heappop(self.heap)[1]
         else:
-            raise Exception('FIFOQueue is empty')
+            raise Exception('Trying to pop from empty PriorityQueue.')
 
     def __len__(self):
-        return len(self.queue)
+        """Return current capacity of PriorityQueue."""
+        return len(self.heap)
 
-    def __contains__(self, item):
-        return item in self.queue
-
-
-class PriorityQueue(Queue):
-
-    """A queue in which the minimum (or maximum) element (as determined by f and
-    order) is returned first. If order is min, the item with minimum f(x) is
-    returned first; if order is max, then it is the item with maximum f(x).
-    Also supports dict-like lookup."""
-
-    def __init__(self, order=min, f=lambda x: x):
-        self.A = []
-        self.order = order
-        self.f = f
-
-    def append(self, item):
-        bisect.insort(self.A, (self.f(item), item))
-
-    def __len__(self):
-        return len(self.A)
-
-    def pop(self):
-        if self.order == min:
-            return self.A.pop(0)[1]
-        else:
-            return self.A.pop()[1]
-
-    def __contains__(self, item):
-        return any(item == pair[1] for pair in self.A)
+    def __contains__(self, key):
+        """Return True if the key is in PriorityQueue."""
+        return any([item == key for _, item in self.heap])
 
     def __getitem__(self, key):
-        for _, item in self.A:
+        """Returns the first value associated with key in PriorityQueue.
+        Raises KeyError if key is not present."""
+        for value, item in self.heap:
             if item == key:
-                return item
+                return value
+        raise KeyError(str(key) + " is not in the priority queue")
 
     def __delitem__(self, key):
-        for i, (value, item) in enumerate(self.A):
-            if item == key:
-                self.A.pop(i)
+        """Delete the first occurrence of key."""
+        try:
+            del self.heap[[item == key for _, item in self.heap].index(True)]
+        except ValueError:
+            raise KeyError(str(key) + " is not in the priority queue")
+        heapq.heapify(self.heap)
+
+
+# ______________________________________________________________________________
+# Monte Carlo tree node and ucb function
+class MCT_Node:
+    """Node in the Monte Carlo search tree, keeps track of the children states"""
+    def __init__(self, parent=None, state=None, U=0, N=0):
+        self.__dict__.update(parent=parent, state=state, U=U, N=N)
+        self.children = {}
+        self.actions = None
+
+
+def ucb(n, C=1.4):
+    return (float('inf') if n.N == 0 else
+        n.U / n.N + C * math.sqrt(math.log(n.parent.N)/n.N))
 
 
 # ______________________________________________________________________________
